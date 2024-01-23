@@ -3,19 +3,23 @@ package com.afoxxvi.asteorbarserver;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
+import org.bukkit.event.EventHandler;
+import org.bukkit.event.Listener;
+import org.bukkit.event.player.PlayerJoinEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitRunnable;
 
 import java.io.File;
 import java.nio.ByteBuffer;
 import java.util.*;
 
-public final class AsteorBar extends JavaPlugin {
+public final class AsteorBar extends JavaPlugin implements Listener {
     private static final Map<String, Float> EXHAUSTION = new HashMap<>();
     private static final Map<String, Float> SATURATION = new HashMap<>();
     private static float saturationUpdateThreshold = 0.01F;
     private static float exhaustionUpdateThreshold = 0.01F;
-    private static final Set<String> REGISTERED_PLAYERS = new HashSet<>();
-    private static boolean registerNeeded = false;
+    private static final Set<String> activatedPlayers = new HashSet<>();
 
     @Override
     public void onEnable() {
@@ -29,26 +33,13 @@ public final class AsteorBar extends JavaPlugin {
         }
         var messenger = getServer().getMessenger();
         messenger.registerOutgoingPluginChannel(this, "asteorbar:network");
+        messenger.registerIncomingPluginChannel(this, "asteorbar:network", (channel, player, bytes) -> {
+            getLogger().info("Received asteorbar:network activation from " + player.getName() + ", start sending packets.");
+            activatedPlayers.add(player.getName());
+        });
+        getServer().getPluginManager().registerEvents(this, this);
         reload();
-        var registerCommand = getCommand("asteorbar");
-        if (registerCommand != null) {
-            registerCommand.setExecutor((commandSender, command1, s, strings) -> {
-                if (commandSender instanceof Player p) {
-                    var name = p.getName();
-                    if (REGISTERED_PLAYERS.contains(name)) {
-                        REGISTERED_PLAYERS.remove(name);
-                        commandSender.sendMessage(ChatColor.GREEN + "AsteorBar Unregistered. The server will no longer send you saturation and exhaustion updates.");
-                    } else {
-                        REGISTERED_PLAYERS.add(name);
-                        commandSender.sendMessage(ChatColor.GREEN + "AsteorBar Registered. The server will send you saturation and exhaustion updates. (No effect if you are not using AsteorBar client mod)");
-                    }
-                } else {
-                    commandSender.sendMessage(ChatColor.RED + "Only players can use this command.");
-                }
-                return true;
-            });
-        }
-        var command = getCommand("asteorbarreload");
+        var command = getCommand("asteorbar");
         if (command != null) {
             command.setExecutor((commandSender, command1, s, strings) -> {
                 reload();
@@ -56,12 +47,9 @@ public final class AsteorBar extends JavaPlugin {
                 return true;
             });
         }
-        getServer().getScheduler().scheduleSyncRepeatingTask(this, this::savePlayers, 0, 20 * 60 * 20);
     }
 
     private void reload() {
-        //collect all players to list
-        var oldValue = REGISTERED_PLAYERS.stream().toList();
         reloadConfig();
         boolean dirty = false;
         if (!getConfig().contains("updateInterval")) {
@@ -79,22 +67,9 @@ public final class AsteorBar extends JavaPlugin {
             getConfig().setComments("exhaustionUpdateThreshold", List.of("Only when player's saturation difference is greater than this value, the plugin will send a packet to the player."));
             dirty = true;
         }
-        if (!getConfig().contains("registerNeeded")) {
-            getConfig().set("registerNeeded", false);
-            getConfig().setComments("registerNeeded", List.of("If true, the plugin will only send packets to players who are registered, players can use /asteorbar to register and unregister."));
-            dirty = true;
-        }
         var interval = getConfig().getInt("updateInterval");
         exhaustionUpdateThreshold = (float) getConfig().getDouble("exhaustionUpdateThreshold");
         saturationUpdateThreshold = (float) getConfig().getDouble("saturationUpdateThreshold");
-        registerNeeded = getConfig().getBoolean("registerNeeded");
-        REGISTERED_PLAYERS.clear();
-        var players = getConfig().getStringList("registeredPlayers");
-        REGISTERED_PLAYERS.addAll(players);
-        if (!oldValue.isEmpty()) {
-            getConfig().set("registeredPlayers", oldValue);
-            dirty = true;
-        }
         if (dirty) {
             saveConfig();
         }
@@ -102,21 +77,31 @@ public final class AsteorBar extends JavaPlugin {
         getServer().getScheduler().scheduleSyncRepeatingTask(this, this::sendPacket, 0, interval);
     }
 
-    private void savePlayers() {
-        getConfig().set("registeredPlayers", REGISTERED_PLAYERS.stream().toList());
-        saveConfig();
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        var player = event.getPlayer();
+        new BukkitRunnable() {
+            int tries = 0;
+
+            @Override
+            public void run() {
+                tries++;
+                if (!player.isOnline() || tries >= 10 || activatedPlayers.contains(player.getName())) {
+                    cancel();
+                    return;
+                }
+                player.sendPluginMessage(AsteorBar.this, "asteorbar:network", ByteBuffer.allocate(2).put((byte) 3).put((byte) 1).array());
+            }
+        }.runTaskTimerAsynchronously(this, 20, 20);
     }
 
-    @Override
-    public void onDisable() {
-        savePlayers();
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        activatedPlayers.remove(event.getPlayer().getName());
     }
 
     private void sendPacket() {
         for (Player player : Bukkit.getOnlinePlayers()) {
-            if (registerNeeded && !REGISTERED_PLAYERS.contains(player.getName())) {
-                continue;
-            }
             var exhaustionLevel = player.getExhaustion();
             var oldExhaustion = EXHAUSTION.get(player.getName());
             if (oldExhaustion == null || Math.abs(oldExhaustion - exhaustionLevel) >= exhaustionUpdateThreshold) {

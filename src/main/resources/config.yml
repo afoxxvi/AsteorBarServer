@@ -4,7 +4,3 @@ updateInterval: 2
 saturationUpdateThreshold: 0.01
 # Only when player's exhaustion difference is greater than this value, the plugin will send a packet to the player.
 exhaustionUpdateThreshold: 0.01
-# If true, the plugin will only send packets to players who are registered, players can use /asteorbar to register and unregister.
-registerNeeded: false
-# Do not change this value unless you know what you are doing
-registeredPlayers: []

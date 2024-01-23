@@ -4,15 +4,9 @@ main: com.afoxxvi.asteorbarserver.AsteorBar
 api-version: 1.13
 commands:
   asteorbar:
-    description: Register to plugin.
+    description: Reload
     usage: /asteorbar
     permission: asteorbar.use
-  asteorbarreload:
-    description: Reload
-    usage: /asteorbarreload
-    permission: asteorbarreload.use
 permissions:
   asteorbar.use:
-    default: true
-  asteorbarreload.use:
     default: op
