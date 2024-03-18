@@ -4,3 +4,5 @@ updateInterval: 2
 saturationUpdateThreshold: 0.01
 # Only when player's exhaustion difference is greater than this value, the plugin will send a packet to the player.
 exhaustionUpdateThreshold: 0.01
+# Message in console when receiving an activation packet from a player.
+consoleActivationMessage: true

@@ -20,6 +20,7 @@ public final class AsteorBar extends JavaPlugin implements Listener {
     private static float saturationUpdateThreshold = 0.01F;
     private static float exhaustionUpdateThreshold = 0.01F;
     private static final Set<String> activatedPlayers = new HashSet<>();
+    private static boolean consoleActivationMessage = false;
 
     @Override
     public void onEnable() {
@@ -34,7 +35,8 @@ public final class AsteorBar extends JavaPlugin implements Listener {
         var messenger = getServer().getMessenger();
         messenger.registerOutgoingPluginChannel(this, "asteorbar:network");
         messenger.registerIncomingPluginChannel(this, "asteorbar:network", (channel, player, bytes) -> {
-            getLogger().info("Received asteorbar:network activation from " + player.getName() + ", start sending packets.");
+            if (consoleActivationMessage)
+                getLogger().info("Received asteorbar:network activation from " + player.getName() + ", start sending packets.");
             activatedPlayers.add(player.getName());
         });
         getServer().getPluginManager().registerEvents(this, this);
@@ -67,9 +69,15 @@ public final class AsteorBar extends JavaPlugin implements Listener {
             getConfig().setComments("exhaustionUpdateThreshold", List.of("Only when player's saturation difference is greater than this value, the plugin will send a packet to the player."));
             dirty = true;
         }
+        if (!getConfig().contains("consoleActivationMessage")) {
+            getConfig().set("consoleActivationMessage", true);
+            getConfig().setComments("consoleActivationMessage", List.of("Message in console when receiving an activation packet from a player."));
+            dirty = true;
+        }
         var interval = getConfig().getInt("updateInterval");
         exhaustionUpdateThreshold = (float) getConfig().getDouble("exhaustionUpdateThreshold");
         saturationUpdateThreshold = (float) getConfig().getDouble("saturationUpdateThreshold");
+        consoleActivationMessage = getConfig().getBoolean("consoleActivationMessage");
         if (dirty) {
             saveConfig();
         }
